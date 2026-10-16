@@ -15,10 +15,16 @@ body {
 }
 
 @theme {
-  --animate-shimmer: shimmer 4s linear infinite;
-  @keyframes shimmer {
-    to {
-      background-position: -200% 0;
+  --animate-bob: bob 2.6s ease-in-out infinite both;
+  @keyframes bob {
+    50% {
+      transform: translateY(-5px);
     }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-bob {
+    animation: none;
   }
 }
