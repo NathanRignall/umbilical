@@ -1,7 +1,7 @@
 # umbilical
 
-A custom external captive portal for UniFi guest Wi-Fi. Guests land on an animated
-**communal womb** page and press a heartbeating womb to join. A small Rust server authorizes them through the **official UniFi
+A custom external captive portal for UniFi guest Wi-Fi. Guests land on a gently animated
+**communal womb** page and press the womb to join. A small Rust server authorizes them through the **official UniFi
 Network API** (Network Application 9.1+, API-key auth).
 
 ```
@@ -108,10 +108,9 @@ Then open
 
 ## Customising
 
-Edit `web/src/config.ts` for the title, button label and welcome text. Stickers (from
-`NathanRignall/wrapped`, resized to 256px) live in `web/src/assets/stickers/`: `womb-pregnant`
-sits inside the womb, and every other `.webp` there bursts out when a guest joins. Drop new ones
-in to add them. Animations live in
+Edit `web/src/config.ts` for the title, button label and welcome text. The sticker inside the womb
+(`web/src/assets/stickers/womb-pregnant.webp`, from `NathanRignall/wrapped`) can be swapped for
+any square image. Animations live in
 `web/src/components/` and respect the device's reduce-motion setting. The page loads no fonts or
 assets from the internet: guests aren't online yet, and anything outside the walled garden fails
 to load.

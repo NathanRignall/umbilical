@@ -17,8 +17,8 @@ interface Props {
 }
 
 export function WombButton({ label, sticker, busy, disabled, onClick }: Props) {
-  // A double "lub-dub" heartbeat; faster while we're talking to the controller.
-  const beat = { duration: busy ? 0.6 : 1.3, repeat: Infinity, ease: 'easeInOut' as const }
+  // A slow, soft heartbeat; quicker while we're talking to the controller.
+  const beat = { duration: busy ? 0.8 : 2.4, repeat: Infinity, ease: 'easeInOut' as const }
 
   return (
     <motion.button
@@ -27,23 +27,20 @@ export function WombButton({ label, sticker, busy, disabled, onClick }: Props) {
       disabled={disabled}
       aria-label={label}
       className="group relative grid size-48 place-items-center outline-none disabled:cursor-not-allowed sm:size-56"
-      initial={{ opacity: 0, scale: 0.2 }}
+      initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: disabled && !busy ? 0.45 : 1, scale: 1 }}
-      transition={{ type: 'spring', stiffness: 180, damping: 12, delay: 1.1 }}
-      whileHover={disabled ? undefined : { scale: 1.07 }}
-      whileTap={disabled ? undefined : { scale: 0.88 }}
+      transition={{ duration: 0.8, ease: 'easeOut', delay: 0.6 }}
+      whileHover={disabled ? undefined : { scale: 1.03 }}
+      whileTap={disabled ? undefined : { scale: 0.95 }}
     >
-      {/* heartbeat ripples */}
-      {[0, 0.65].map((delay) => (
-        <motion.span
-          key={delay}
-          aria-hidden
-          className="absolute inset-0 border-2 border-rose-300/50"
-          style={{ borderRadius: shapes[0] }}
-          animate={{ scale: [1, 1.6], opacity: [0.7, 0] }}
-          transition={{ duration: 2.6, repeat: Infinity, ease: 'easeOut', delay }}
-        />
-      ))}
+      {/* a single soft ripple */}
+      <motion.span
+        aria-hidden
+        className="absolute inset-0 border border-rose-300/40"
+        style={{ borderRadius: shapes[0] }}
+        animate={{ scale: [1, 1.35], opacity: [0.5, 0] }}
+        transition={{ duration: 4.8, repeat: Infinity, ease: 'easeOut' }}
+      />
 
       <motion.span
         aria-hidden
@@ -52,8 +49,8 @@ export function WombButton({ label, sticker, busy, disabled, onClick }: Props) {
           background:
             'radial-gradient(circle at 35% 30%, #fecdd3 0%, #fb7185 28%, #e11d48 60%, #881337 100%)',
         }}
-        animate={{ borderRadius: shapes, scale: [1, 1.07, 1, 1.04, 1] }}
-        transition={{ borderRadius: { duration: 7, repeat: Infinity, ease: 'easeInOut' }, scale: beat }}
+        animate={{ borderRadius: shapes, scale: [1, 1.03, 1] }}
+        transition={{ borderRadius: { duration: 10, repeat: Infinity, ease: 'easeInOut' }, scale: beat }}
       />
 
       {/* The residents, floating inside. */}
@@ -62,8 +59,8 @@ export function WombButton({ label, sticker, busy, disabled, onClick }: Props) {
         alt=""
         draggable={false}
         className="relative w-[72%] drop-shadow-[0_6px_10px_rgba(76,5,25,0.55)] select-none"
-        animate={busy ? { rotate: [0, -10, 10, 0], scale: [1, 0.94, 1] } : { y: [0, -6, 0], rotate: [-5, 5, -5] }}
-        transition={{ duration: busy ? 0.5 : 3.4, repeat: Infinity, ease: 'easeInOut' }}
+        animate={busy ? { scale: [1, 0.96, 1] } : { y: [0, -3, 0], rotate: [-1.5, 1.5, -1.5] }}
+        transition={{ duration: busy ? 0.8 : 5, repeat: Infinity, ease: 'easeInOut' }}
       />
       <span className="absolute bottom-[12%] rounded-full bg-rose-950/55 px-4 py-1 text-lg font-extrabold tracking-[0.3em] text-rose-50 uppercase backdrop-blur-sm">
         {busy ? '…' : label}

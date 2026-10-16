@@ -15,10 +15,10 @@ body {
 }
 
 @theme {
-  --animate-bob: bob 2.6s ease-in-out infinite both;
+  --animate-bob: bob 4s ease-in-out infinite both;
   @keyframes bob {
     50% {
-      transform: translateY(-5px);
+      transform: translateY(-3px);
     }
   }
 }
