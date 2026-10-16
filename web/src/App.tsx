@@ -1,11 +1,12 @@
 import { AnimatePresence, MotionConfig, motion } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Background } from './components/Background'
 import { Born } from './components/Born'
 import { Title } from './components/Title'
 import { WombButton } from './components/WombButton'
 import { portalConfig } from './config'
 import { authorize, readPortalParams } from './lib/portal'
+import { crowdStickers, wombSticker } from './stickers'
 
 type Status =
   | { kind: 'idle' }
@@ -17,6 +18,11 @@ export default function App() {
   const params = useMemo(() => readPortalParams(), [])
   const [status, setStatus] = useState<Status>({ kind: 'idle' })
   const missingMac = !params.clientMac
+
+  // Warm the cache so the crowd is ready the moment the womb bursts.
+  useEffect(() => {
+    for (const s of crowdStickers) new Image().src = s.url
+  }, [])
 
   async function join() {
     if (missingMac || status.kind === 'submitting') return
@@ -40,7 +46,7 @@ export default function App() {
 
         <WombButton
           label={portalConfig.joinLabel}
-          emoji={portalConfig.joinEmoji}
+          sticker={wombSticker}
           busy={status.kind === 'submitting'}
           disabled={missingMac || status.kind === 'submitting'}
           onClick={join}
@@ -78,7 +84,8 @@ export default function App() {
             <Born
               title={portalConfig.welcome}
               subtitle={portalConfig.welcomeSub}
-              emoji={portalConfig.joinEmoji}
+              wombSticker={wombSticker}
+              crowd={crowdStickers}
               expiresAt={status.expiresAt}
               originalUrl={params.originalUrl}
             />

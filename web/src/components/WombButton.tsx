@@ -10,13 +10,13 @@ const shapes = [
 
 interface Props {
   label: string
-  emoji: string
+  sticker: string
   busy: boolean
   disabled: boolean
   onClick: () => void
 }
 
-export function WombButton({ label, emoji, busy, disabled, onClick }: Props) {
+export function WombButton({ label, sticker, busy, disabled, onClick }: Props) {
   // A double "lub-dub" heartbeat; faster while we're talking to the controller.
   const beat = { duration: busy ? 0.6 : 1.3, repeat: Infinity, ease: 'easeInOut' as const }
 
@@ -56,18 +56,17 @@ export function WombButton({ label, emoji, busy, disabled, onClick }: Props) {
         transition={{ borderRadius: { duration: 7, repeat: Infinity, ease: 'easeInOut' }, scale: beat }}
       />
 
-      <span className="relative flex flex-col items-center">
-        <motion.span
-          aria-hidden
-          className="text-6xl drop-shadow-[0_4px_8px_rgba(76,5,25,0.6)] sm:text-7xl"
-          animate={busy ? { rotate: [0, -12, 12, 0] } : { y: [0, -6, 0], rotate: [-4, 4, -4] }}
-          transition={{ duration: busy ? 0.5 : 3, repeat: Infinity, ease: 'easeInOut' }}
-        >
-          {emoji}
-        </motion.span>
-        <span className="mt-1 text-xl font-extrabold tracking-[0.3em] text-rose-50 uppercase drop-shadow">
-          {busy ? '…' : label}
-        </span>
+      {/* The residents, floating inside. */}
+      <motion.img
+        src={sticker}
+        alt=""
+        draggable={false}
+        className="relative w-[72%] drop-shadow-[0_6px_10px_rgba(76,5,25,0.55)] select-none"
+        animate={busy ? { rotate: [0, -10, 10, 0], scale: [1, 0.94, 1] } : { y: [0, -6, 0], rotate: [-5, 5, -5] }}
+        transition={{ duration: busy ? 0.5 : 3.4, repeat: Infinity, ease: 'easeInOut' }}
+      />
+      <span className="absolute bottom-[12%] rounded-full bg-rose-950/55 px-4 py-1 text-lg font-extrabold tracking-[0.3em] text-rose-50 uppercase backdrop-blur-sm">
+        {busy ? '…' : label}
       </span>
     </motion.button>
   )
