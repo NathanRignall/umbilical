@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+/* No web fonts or CDNs: guests are not online yet, so anything outside the
+   walled garden will fail to load. Everything ships from the portal server. */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-950 text-slate-100 antialiased;
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
