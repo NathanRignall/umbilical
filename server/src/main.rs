@@ -84,7 +84,6 @@ struct AuthorizeRequest {
     ap_mac: Option<String>,
     #[serde(default)]
     ssid: Option<String>,
-    accepted_terms: bool,
 }
 
 #[derive(Serialize)]
@@ -119,12 +118,9 @@ async fn authorize(
     State(state): State<Arc<AppState>>,
     Json(req): Json<AuthorizeRequest>,
 ) -> Result<Json<AuthorizeResponse>, ApiError> {
-    if !req.accepted_terms {
-        return Err(ApiError(StatusCode::BAD_REQUEST, "You need to accept the terms to continue.".into()));
-    }
     let mac = normalize_mac(&req.client_mac)
         .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Invalid device address.".into()))?;
-    info!(%mac, site = %req.site, ap = ?req.ap_mac, ssid = ?req.ssid, "guest accepted terms");
+    info!(%mac, site = %req.site, ap = ?req.ap_mac, ssid = ?req.ssid, "guest wants to join");
 
     let Some(unifi) = &state.unifi else {
         let expires = std::time::SystemTime::now() + Duration::from_secs(u64::from(state.limits.minutes) * 60);

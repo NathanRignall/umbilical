@@ -35,7 +35,6 @@ export async function authorize(p: PortalParams): Promise<AuthorizeResult> {
       clientMac: p.clientMac,
       apMac: p.apMac,
       ssid: p.ssid,
-      acceptedTerms: true,
     }),
   })
   const body = await res.json().catch(() => ({}))

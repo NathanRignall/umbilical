@@ -9,6 +9,16 @@ body,
 }
 
 body {
-  @apply bg-slate-950 text-slate-100 antialiased;
+  @apply bg-[#1a0610] text-rose-50 antialiased;
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  overscroll-behavior: none;
+}
+
+@theme {
+  --animate-shimmer: shimmer 4s linear infinite;
+  @keyframes shimmer {
+    to {
+      background-position: -200% 0;
+    }
+  }
 }

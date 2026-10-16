@@ -1,11 +1,11 @@
 # umbilical
 
-A custom external captive portal for UniFi guest Wi-Fi. Guests see a React page with a single
-terms-and-conditions checkbox. A small Rust server authorizes them through the **official UniFi
+A custom external captive portal for UniFi guest Wi-Fi. Guests land on an animated
+**communal womb** page and press a heartbeating womb to join. A small Rust server authorizes them through the **official UniFi
 Network API** (Network Application 9.1+, API-key auth).
 
 ```
-web/     React 19 + Vite + Tailwind v4 splash page
+web/     React 19 + Vite + Tailwind v4 + Motion splash page
 server/  Rust (axum) — serves the page and talks to the UniFi controller
 ```
 
@@ -14,8 +14,8 @@ server/  Rust (axum) — serves the page and talks to the UniFi controller
 1. A guest joins an SSID with **Hotspot** enabled. UniFi marks them `GUEST`, `authorized: false`.
 2. Their first HTTP request is redirected to the external portal:
    `http://<portal>/guest/s/default/?ap=<ap mac>&id=<client mac>&t=<ts>&url=<original url>&ssid=<ssid>`
-3. The page reads `id` (the client MAC) from the query string. When the guest ticks the box and
-   presses **Connect**, the page calls `POST /api/authorize`.
+3. The page reads `id` (the client MAC) from the query string. When the guest presses **join**,
+   the page calls `POST /api/authorize`.
 4. The server keeps the API key out of the browser and calls the controller:
    - `GET  /v1/sites` → maps `default` (the site's `internalReference`) to the site UUID
    - `GET  /v1/sites/{siteId}/clients?filter=macAddress.eq('<mac>')` → client UUID
@@ -40,7 +40,50 @@ The full API reference is on your console under **Network → Settings → Contr
 5. **Firewall:** on zone-based firewall setups, make sure the **Hotspot** zone may reach the portal
    host on TCP 80.
 
-## Run it
+## Deploy on NixOS (e.g. a Raspberry Pi)
+
+The flake exports a package and a NixOS module. In your system flake:
+
+```nix
+{
+  inputs.umbilical.url = "github:NathanRignall/umbilical";
+  inputs.umbilical.inputs.nixpkgs.follows = "nixpkgs";
+
+  outputs = { nixpkgs, umbilical, ... }: {
+    nixosConfigurations.pi = nixpkgs.lib.nixosSystem {
+      system = "aarch64-linux";
+      modules = [
+        ./configuration.nix
+        umbilical.nixosModules.default
+        {
+          services.umbilical = {
+            enable = true;
+            unifi.url = "https://192.168.1.1";        # your console
+            environmentFile = "/etc/umbilical.env";   # UNIFI_API_KEY=...
+            guest.minutes = 1440;
+            # guest.rxKbps = 20000; guest.txKbps = 5000; guest.dataLimitMB = 2048;
+          };
+        }
+      ];
+    };
+  };
+}
+```
+
+Put the key on the Pi, outside the Nix store (or use sops-nix or agenix):
+
+```sh
+echo 'UNIFI_API_KEY=xxxxxxxx' | sudo install -m 600 /dev/stdin /etc/umbilical.env
+```
+
+The service listens on :80 and opens the firewall port. It runs as an unprivileged dynamic user
+with systemd sandboxing. Logs: `journalctl -u umbilical -f`. The first build compiles Rust and
+npm deps on the Pi, which takes a while. To build on a faster machine instead, use
+`nixos-rebuild switch --flake .#pi --target-host pi --build-host <x86 box with aarch64 binfmt>`.
+
+`nix develop` gives a shell with cargo, rustc and node. `nix flake check` runs a NixOS VM test.
+
+## Run it (without Nix)
 
 ```sh
 # build the page
@@ -65,6 +108,7 @@ Then open
 
 ## Customising
 
-Edit `web/src/config.ts` for the venue name, tagline and terms. The page loads no fonts or
+Edit `web/src/config.ts` for the title, button label/emoji and welcome text. Animations live in
+`web/src/components/` and respect the device's reduce-motion setting. The page loads no fonts or
 assets from the internet: guests aren't online yet, and anything outside the walled garden fails
 to load.
