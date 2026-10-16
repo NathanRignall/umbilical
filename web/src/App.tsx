@@ -36,16 +36,6 @@ export default function App() {
 
         <div className="relative">
           <Title text={portalConfig.title} />
-          {params.ssid && (
-            <motion.p
-              className="mt-4 text-center text-sm font-medium tracking-[0.25em] text-rose-200/60 uppercase"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 1.4 }}
-            >
-              {params.ssid}
-            </motion.p>
-          )}
         </div>
 
         <WombButton
