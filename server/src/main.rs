@@ -1,12 +1,13 @@
 mod config;
 mod unifi;
 
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
 
 use axum::{
     Json, Router,
-    extract::State,
-    http::{StatusCode, header},
+    extract::{ConnectInfo, Query, Request, State},
+    http::{HeaderMap, Method, StatusCode, header},
+    middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -59,6 +60,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/authorize", post(authorize))
         .with_state(state)
         .fallback_service(spa)
+        .layer(middleware::from_fn(log_page_visit))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CACHE_CONTROL,
             header::HeaderValue::from_static("no-store"),
@@ -67,12 +69,45 @@ async fn main() -> anyhow::Result<()> {
 
     let listener = tokio::net::TcpListener::bind(cfg.listen).await?;
     info!("portal listening on http://{}", cfg.listen);
-    axum::serve(listener, app).with_graceful_shutdown(shutdown()).await?;
+    // Connect info gives handlers the visitor's address for logging.
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
+        .with_graceful_shutdown(shutdown())
+        .await?;
     Ok(())
 }
 
 async fn shutdown() {
     let _ = tokio::signal::ctrl_c().await;
+}
+
+/// The visitor's user agent, trimmed so a hostile header can't flood the log.
+fn user_agent(headers: &HeaderMap) -> &str {
+    let ua = headers.get(header::USER_AGENT).and_then(|v| v.to_str().ok()).unwrap_or("-");
+    ua.char_indices().nth(200).map_or(ua, |(i, _)| &ua[..i])
+}
+
+/// One info line per portal page load (not per asset), so visits are visible even when the
+/// guest never presses join. UniFi's redirect puts the device details in the query string.
+async fn log_page_visit(req: Request, next: Next) -> Response {
+    let path = req.uri().path();
+    let is_page = req.method() == Method::GET
+        && !path.starts_with("/api/")
+        && !path.starts_with("/assets/")
+        && !path.rsplit('/').next().unwrap_or("").contains('.');
+    if is_page {
+        let ip = req.extensions().get::<ConnectInfo<SocketAddr>>().map_or("-".into(), |c| c.0.ip().to_string());
+        let q = Query::<HashMap<String, String>>::try_from_uri(req.uri()).map(|q| q.0).unwrap_or_default();
+        info!(
+            %ip,
+            path,
+            mac = q.get("id").map_or("-", String::as_str),
+            ap = q.get("ap").map_or("-", String::as_str),
+            ssid = q.get("ssid").map_or("-", String::as_str),
+            user_agent = user_agent(req.headers()),
+            "portal visited"
+        );
+    }
+    next.run(req).await
 }
 
 #[derive(Deserialize)]
@@ -116,17 +151,28 @@ impl From<unifi::Error> for ApiError {
 
 async fn authorize(
     State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<AuthorizeRequest>,
 ) -> Result<Json<AuthorizeResponse>, ApiError> {
+    let ip = peer.ip();
     let mac = normalize_mac(&req.client_mac)
         .ok_or_else(|| ApiError(StatusCode::BAD_REQUEST, "Invalid device address.".into()))?;
-    info!(%mac, site = %req.site, ap = ?req.ap_mac, ssid = ?req.ssid, "guest wants to join");
+    info!(
+        %ip,
+        %mac,
+        site = %req.site,
+        ap = ?req.ap_mac,
+        ssid = ?req.ssid,
+        user_agent = user_agent(&headers),
+        "guest wants to join"
+    );
 
     let Some(unifi) = &state.unifi else {
         let expires = std::time::SystemTime::now() + Duration::from_secs(u64::from(state.limits.minutes) * 60);
-        return Ok(Json(AuthorizeResponse {
-            expires_at: Some(humantime::format_rfc3339_seconds(expires).to_string()),
-        }));
+        let expires_at = humantime::format_rfc3339_seconds(expires).to_string();
+        info!(%ip, %mac, %expires_at, "guest authorized (mock)");
+        return Ok(Json(AuthorizeResponse { expires_at: Some(expires_at) }));
     };
 
     let site_id = unifi.site_id(&req.site).await?;
@@ -156,7 +202,7 @@ async fn authorize(
             None
         }
     };
-    info!(%mac, client_id = %client.id, ?expires_at, "guest authorized");
+    info!(%ip, %mac, client_id = %client.id, ?expires_at, "guest authorized");
     Ok(Json(AuthorizeResponse { expires_at }))
 }
 
