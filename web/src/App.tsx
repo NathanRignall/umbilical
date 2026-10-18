@@ -5,18 +5,20 @@ import { Born } from './components/Born'
 import { Title } from './components/Title'
 import { WombButton } from './components/WombButton'
 import { portalConfig } from './config'
-import { authorize, readPortalParams } from './lib/portal'
+import { authorize, joinedUrl, readPortalParams } from './lib/portal'
 import { wombSticker } from './stickers'
 
 type Status =
   | { kind: 'idle' }
   | { kind: 'submitting' }
-  | { kind: 'connected'; expiresAt: string | null }
+  | { kind: 'connected'; expiresAt: string | null; instant: boolean }
   | { kind: 'error'; message: string }
 
 export default function App() {
   const params = useMemo(() => readPortalParams(), [])
-  const [status, setStatus] = useState<Status>({ kind: 'idle' })
+  const [status, setStatus] = useState<Status>(() =>
+    params.joined ? { kind: 'connected', expiresAt: params.expiresAt, instant: true } : { kind: 'idle' },
+  )
   const missingMac = !params.clientMac
 
   async function join() {
@@ -24,7 +26,10 @@ export default function App() {
     setStatus({ kind: 'submitting' })
     try {
       const { expiresAt } = await authorize(params)
-      setStatus({ kind: 'connected', expiresAt })
+      setStatus({ kind: 'connected', expiresAt, instant: false })
+      // Once the animation has played (and the access point has had a moment to apply the
+      // authorization), reload into the welcome screen so iOS re-checks and shows "Done".
+      setTimeout(() => window.location.replace(joinedUrl(expiresAt)), 2800)
     } catch (err) {
       setStatus({ kind: 'error', message: err instanceof Error ? err.message : String(err) })
     }
@@ -82,6 +87,7 @@ export default function App() {
               wombSticker={wombSticker}
               expiresAt={status.expiresAt}
               originalUrl={params.originalUrl}
+              instant={status.instant}
             />
           )}
         </AnimatePresence>

@@ -8,6 +8,9 @@ export interface PortalParams {
   apMac: string | null
   ssid: string | null
   originalUrl: string | null
+  /** Set after joining: we reload with `joined=1` (see `joinedUrl`). */
+  joined: boolean
+  expiresAt: string | null
 }
 
 export function readPortalParams(loc: Location = window.location): PortalParams {
@@ -19,7 +22,22 @@ export function readPortalParams(loc: Location = window.location): PortalParams 
     apMac: q.get('ap'),
     ssid: q.get('ssid'),
     originalUrl: q.get('url'),
+    joined: q.get('joined') === '1',
+    expiresAt: q.get('expires'),
   }
+}
+
+/**
+ * The current page with `joined=1` (and the expiry) added. iOS's sign-in sheet only re-checks
+ * connectivity, and swaps its X for "Done", after a real page load; a background fetch doesn't
+ * count. So once authorized we navigate here and render the welcome screen straight away.
+ */
+export function joinedUrl(expiresAt: string | null, loc: Location = window.location): string {
+  const q = new URLSearchParams(loc.search)
+  q.set('joined', '1')
+  if (expiresAt) q.set('expires', expiresAt)
+  else q.delete('expires')
+  return `${loc.pathname}?${q}`
 }
 
 export interface AuthorizeResult {

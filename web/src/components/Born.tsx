@@ -10,17 +10,19 @@ interface Props {
   wombSticker: string
   expiresAt: string | null
   originalUrl: string | null
+  /** Already joined (after the reload): show the final state with no animation. */
+  instant?: boolean
 }
 
 /** The womb opens out from the button into the welcome. */
-export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: Props) {
+export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl, instant = false }: Props) {
   const backTo = returnUrl(originalUrl)
 
   return (
     <motion.div
       role="status"
       className="fixed inset-0 z-10 grid place-items-center overflow-hidden bg-[radial-gradient(circle_at_50%_55%,#fb7185,#be123c_45%,#4c0519)] p-6"
-      initial={{ clipPath: `circle(0% at ${ORIGIN.x * 100}% ${ORIGIN.y * 100}%)` }}
+      initial={instant ? false : { clipPath: `circle(0% at ${ORIGIN.x * 100}% ${ORIGIN.y * 100}%)` }}
       animate={{ clipPath: `circle(150% at ${ORIGIN.x * 100}% ${ORIGIN.y * 100}%)` }}
       transition={{ duration: 1, ease: [0.65, 0, 0.35, 1] }}
     >
@@ -30,13 +32,13 @@ export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: P
           alt=""
           draggable={false}
           className="mx-auto aspect-square w-36 object-contain drop-shadow-[0_8px_16px_rgba(76,5,25,0.55)] select-none sm:w-44"
-          initial={{ opacity: 0, scale: 0.8 }}
+          initial={instant ? false : { opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.6, duration: 0.6, ease: 'easeOut' }}
         />
         <motion.h2
           className="mt-3 text-5xl font-black tracking-tight text-rose-50 [text-shadow:0_3px_0_#4c0519,0_0_24px_rgba(255,228,230,0.5)] sm:text-6xl"
-          initial={{ opacity: 0, y: 16 }}
+          initial={instant ? false : { opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.9, duration: 0.6, ease: 'easeOut' }}
         >
@@ -44,7 +46,7 @@ export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: P
         </motion.h2>
         <motion.div
           className="mt-3 space-y-2 text-rose-100/90"
-          initial={{ opacity: 0 }}
+          initial={instant ? false : { opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.3, duration: 0.8 }}
         >
