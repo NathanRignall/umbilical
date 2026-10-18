@@ -116,8 +116,7 @@ Then open
 ## Customising
 
 Edit `web/src/config.ts` for the title, button label and welcome text. The sticker inside the womb
-(`web/src/assets/stickers/womb-pregnant.webp`, from `NathanRignall/wrapped`) can be swapped for
-any square image. Animations live in
+(`web/src/assets/stickers/main.webp`) can be swapped for any square image. Animations live in
 `web/src/components/` and respect the device's reduce-motion setting. The page loads no fonts or
 assets from the internet: guests aren't online yet, and anything outside the walled garden fails
 to load.
