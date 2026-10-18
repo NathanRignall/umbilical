@@ -190,19 +190,36 @@ async fn authorize(
     }
     let client = client.ok_or_else(|| unifi::Error::ClientNotFound(mac.clone()))?;
 
-    if !client.access.authorized {
-        unifi.authorize_guest(&site_id, &client.id, &state.limits).await?;
-    }
-
-    // Best effort: report when access ends. Authorization already succeeded.
-    let expires_at = match unifi.client(&site_id, &client.id).await {
-        Ok(c) => c.access.authorization.and_then(|a| a.expires_at),
-        Err(e) => {
-            warn!(error = %e, "could not read back authorization");
-            None
-        }
+    let granted = if client.access.authorized {
+        info!(%ip, %mac, client_id = %client.id, "guest already authorized");
+        None
+    } else {
+        info!(%ip, %mac, client_id = %client.id, minutes = state.limits.minutes, "authorizing guest");
+        unifi.authorize_guest(&site_id, &client.id, &state.limits).await?
     };
-    info!(%ip, %mac, client_id = %client.id, ?expires_at, "guest authorized");
+
+    // What the controller actually granted: from the action response, else read it back.
+    let auth = match granted {
+        Some(a) => Some(a),
+        None => match unifi.client(&site_id, &client.id).await {
+            Ok(c) => c.access.authorization,
+            Err(e) => {
+                warn!(error = %e, "could not read back authorization");
+                None
+            }
+        },
+    };
+    let expires_at = auth.as_ref().and_then(|a| a.expires_at.clone());
+    info!(
+        %ip,
+        %mac,
+        client_id = %client.id,
+        authorized_at = ?auth.as_ref().and_then(|a| a.authorized_at.as_deref()),
+        ?expires_at,
+        data_limit_mb = ?auth.as_ref().and_then(|a| a.data_limit_mbytes),
+        method = ?auth.as_ref().and_then(|a| a.authorization_method.as_deref()),
+        "guest authorized"
+    );
     Ok(Json(AuthorizeResponse { expires_at }))
 }
 

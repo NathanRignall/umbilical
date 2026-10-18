@@ -55,7 +55,17 @@ pub struct Access {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Authorization {
+    pub authorized_at: Option<String>,
     pub expires_at: Option<String>,
+    #[serde(rename = "dataUsageLimitMBytes")]
+    pub data_limit_mbytes: Option<u64>,
+    pub authorization_method: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ActionResponse {
+    granted_authorization: Option<Authorization>,
 }
 
 pub struct UniFi {
@@ -121,7 +131,13 @@ impl UniFi {
         self.get(&format!("/v1/sites/{site_id}/clients/{client_id}"), None).await
     }
 
-    pub async fn authorize_guest(&self, site_id: &str, client_id: &str, limits: &GuestLimits) -> Result<(), Error> {
+    /// Returns the authorization the controller says it granted, when the response includes it.
+    pub async fn authorize_guest(
+        &self,
+        site_id: &str,
+        client_id: &str,
+        limits: &GuestLimits,
+    ) -> Result<Option<Authorization>, Error> {
         let mut body = json!({
             "action": "AUTHORIZE_GUEST_ACCESS",
             "timeLimitMinutes": limits.minutes,
@@ -144,7 +160,14 @@ impl UniFi {
         if !res.status().is_success() {
             return Err(api_error(res).await);
         }
-        Ok(())
+        let text = res.text().await?;
+        match serde_json::from_str::<ActionResponse>(&text) {
+            Ok(r) => Ok(r.granted_authorization),
+            Err(_) => {
+                tracing::warn!(body = %text, "unexpected authorize response");
+                Ok(None)
+            }
+        }
     }
 }
 
