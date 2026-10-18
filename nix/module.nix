@@ -10,7 +10,6 @@ let
   cfg = config.services.umbilical;
   inherit (lib) mkOption mkEnableOption types;
   optInt = types.nullOr types.ints.positive;
-  tls = cfg.tls.domain != null;
 in
 {
   options.services.umbilical = {
@@ -24,62 +23,23 @@ in
 
     address = mkOption {
       type = types.str;
-      default = if tls then "127.0.0.1" else "0.0.0.0";
-      defaultText = lib.literalMD "`127.0.0.1` with {option}`tls.domain` (nginx in front), else `0.0.0.0`";
-      description = "Address the portal server listens on.";
+      default = "0.0.0.0";
+      description = "Address to listen on.";
     };
 
     port = mkOption {
       type = types.port;
-      default = if tls then 8080 else 80;
-      defaultText = lib.literalMD "`8080` with {option}`tls.domain`, else `80`";
+      default = 80;
       description = ''
-        Port the portal server listens on. UniFi redirects guests to
-        http://<portal-ip>/guest/s/<site>/, so without {option}`tls.domain` this must be 80.
+        Port to listen on. UniFi redirects guests to http://<portal-ip>/guest/s/<site>/,
+        so this must stay 80 unless something in front of it forwards port 80.
       '';
     };
 
     openFirewall = mkOption {
       type = types.bool;
       default = true;
-      description = "Open the portal's ports (80, plus 443 with {option}`tls.domain`) in the firewall.";
-    };
-
-    tls = {
-      domain = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        example = "umbilical.nlr.app";
-        description = ''
-          Serve the portal over HTTPS on this name, with a Let's Encrypt certificate obtained
-          through a DNS-01 challenge (the portal doesn't need to be reachable from the internet).
-          nginx terminates TLS on :443 and redirects every plain-HTTP request on :80, including
-          UniFi's redirect to http://<portal-ip>/guest/s/..., to the same path on this name.
-          Point the name's DNS A record at this machine's LAN address.
-        '';
-      };
-
-      acmeEmail = mkOption {
-        type = types.nullOr types.str;
-        default = null;
-        description = "Contact email for the Let's Encrypt account.";
-      };
-
-      dnsProvider = mkOption {
-        type = types.str;
-        default = "cloudflare";
-        description = "lego DNS provider used for the DNS-01 challenge. See https://go-acme.github.io/lego/dns/.";
-      };
-
-      credentialsFile = mkOption {
-        type = types.nullOr types.path;
-        default = null;
-        example = "/etc/umbilical-acme.env";
-        description = ''
-          Environment file with the DNS provider's credentials, e.g. `CF_DNS_API_TOKEN=...` for
-          Cloudflare (a token with Zone:DNS:Edit on the zone). Kept out of the Nix store.
-        '';
-      };
+      description = "Open {option}`port` in the firewall.";
     };
 
     unifi = {
@@ -154,63 +114,9 @@ in
         assertion = cfg.unifi.mock || cfg.environmentFile != null;
         message = "services.umbilical: set environmentFile to a file containing UNIFI_API_KEY=...";
       }
-      {
-        assertion = !tls || (cfg.tls.acmeEmail != null && cfg.tls.credentialsFile != null);
-        message = "services.umbilical: tls.domain needs tls.acmeEmail and tls.credentialsFile.";
-      }
     ];
 
-    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall (
-      if tls then
-        [
-          80
-          443
-        ]
-      else
-        [ cfg.port ]
-    );
-
-    security.acme = lib.mkIf tls {
-      acceptTerms = true;
-      certs.${cfg.tls.domain} = {
-        email = cfg.tls.acmeEmail;
-        inherit (cfg.tls) dnsProvider;
-        environmentFile = cfg.tls.credentialsFile;
-        group = config.services.nginx.group;
-      };
-    };
-
-    services.nginx = lib.mkIf tls {
-      enable = true;
-      recommendedTlsSettings = true;
-      recommendedProxySettings = true;
-      recommendedGzipSettings = true;
-      virtualHosts = {
-        ${cfg.tls.domain} = {
-          default = true;
-          onlySSL = true;
-          useACMEHost = cfg.tls.domain;
-          locations."/".proxyPass = "http://${cfg.address}:${toString cfg.port}";
-        };
-        # UniFi sends guests to http://<portal-ip>/guest/s/<site>/?...; bounce every plain
-        # HTTP request, whatever its Host, to the same path on the certificate's name.
-        "umbilical-http-redirect" = {
-          default = true;
-          serverName = "_";
-          listen = [
-            {
-              addr = "0.0.0.0";
-              port = 80;
-            }
-            {
-              addr = "[::]";
-              port = 80;
-            }
-          ];
-          locations."/".return = "302 https://${cfg.tls.domain}$request_uri";
-        };
-      };
-    };
+    networking.firewall.allowedTCPPorts = lib.mkIf cfg.openFirewall [ cfg.port ];
 
     systemd.services.umbilical = {
       description = "umbilical UniFi captive portal";

@@ -81,42 +81,7 @@ with systemd sandboxing. Logs: `journalctl -u umbilical -f`. The first build com
 npm deps on the Pi, which takes a while. To build on a faster machine instead, use
 `nixos-rebuild switch --flake .#pi --target-host pi --build-host <x86 box with aarch64 binfmt>`.
 
-`nix develop` gives a shell with cargo, rustc and node. `nix flake check` runs NixOS VM tests of
-both the plain-HTTP and HTTPS setups.
-
-### HTTPS on a public name (umbilical.nlr.app)
-
-The Pi stays on the LAN; only DNS is public. Let's Encrypt verifies ownership with a DNS-01
-challenge, so nothing needs to be reachable from the internet. nginx serves
-`https://umbilical.nlr.app` and redirects every plain-HTTP request on :80 (including UniFi's
-`http://<pi-ip>/guest/s/default/?…`) to the same path on that name. `.app` is HSTS-preloaded, so
-browsers only ever use HTTPS for it anyway.
-
-1. **DNS (Cloudflare):** add an `A` record `umbilical` → the Pi's LAN IP, **DNS only** (grey
-   cloud; Cloudflare can't proxy a private address).
-2. **API token:** Cloudflare → My Profile → API Tokens → *Edit zone DNS* template, scoped to
-   `nlr.app`. Put it on the Pi:
-   ```sh
-   echo 'CF_DNS_API_TOKEN=xxxxxxxx' | sudo install -m 600 /dev/stdin /etc/umbilical-acme.env
-   ```
-3. **NixOS:**
-   ```nix
-   services.umbilical.tls = {
-     domain = "umbilical.nlr.app";
-     acmeEmail = "you@example.com";
-     credentialsFile = "/etc/umbilical-acme.env";
-   };
-   ```
-   The portal then listens on 127.0.0.1:8080 behind nginx, and the firewall opens 80 and 443.
-   Watch issuance with `journalctl -u acme-order-renew-umbilical.nlr.app -f`.
-4. **UniFi:** keep the External Portal Server set to the Pi's **IP** on port 80, with HTTPS
-   redirection **off**. The :80 redirect takes guests to the HTTPS name. (If your controller has a
-   hostname / secure-portal option, you can point it at `umbilical.nlr.app` on 443 directly
-   instead.) The Pi's IP must stay in the pre-authorization allowance; guests resolve the name
-   through the normal pre-auth DNS.
-
-If guests can't resolve the name, check for DNS-rebinding protection (e.g. Pi-hole or dnsmasq
-`stop-dns-rebind`) dropping public names that point at private IPs, and allow `nlr.app`.
+`nix develop` gives a shell with cargo, rustc and node. `nix flake check` runs a NixOS VM test.
 
 ## Run it (without Nix)
 

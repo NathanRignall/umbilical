@@ -37,7 +37,6 @@
 
       checks = nixpkgs.lib.genAttrs [ "x86_64-linux" "aarch64-linux" ] (system: {
         vm = nixpkgs.legacyPackages.${system}.testers.runNixOSTest (import ./nix/test.nix self);
-        vm-tls = nixpkgs.legacyPackages.${system}.testers.runNixOSTest (import ./nix/test-tls.nix self);
       });
 
       formatter = forAllSystems (pkgs: pkgs.nixfmt);
