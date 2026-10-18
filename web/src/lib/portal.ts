@@ -41,3 +41,37 @@ export async function authorize(p: PortalParams): Promise<AuthorizeResult> {
   if (!res.ok) throw new Error(body.error ?? `Request failed (${res.status})`)
   return body as AuthorizeResult
 }
+
+// Phones and laptops detect captive portals by loading a probe URL, and that probe is
+// usually what UniFi passes back as `url`. Sending a guest there just shows a bare
+// "Success" page (Apple) or nothing (Android's 204), so it isn't somewhere to return to.
+const PROBE_HOSTS = new Set([
+  'captive.apple.com',
+  'netcts.cdn-apple.com',
+  'connectivitycheck.gstatic.com',
+  'connectivitycheck.android.com',
+  'clients1.google.com',
+  'clients3.google.com',
+  'www.msftconnecttest.com',
+  'www.msftncsi.com',
+  'detectportal.firefox.com',
+  'nmcheck.gnome.org',
+  'network-test.debian.org',
+  'connectivity-check.ubuntu.com',
+])
+const PROBE_PATHS = /\/(hotspot-detect\.html|library\/test\/success\.html|generate_204|gen_204|connecttest\.txt|ncsi\.txt|canonical\.html|check_network_status\.txt)$/i
+
+/** The page the guest was actually trying to open, or null if there isn't one worth offering. */
+export function returnUrl(originalUrl: string | null): string | null {
+  if (!originalUrl) return null
+  let u: URL
+  try {
+    u = new URL(originalUrl)
+  } catch {
+    return null
+  }
+  // Only offer http(s) links back; `url` comes straight from the query string.
+  if (u.protocol !== 'http:' && u.protocol !== 'https:') return null
+  if (PROBE_HOSTS.has(u.hostname.toLowerCase()) || PROBE_PATHS.test(u.pathname)) return null
+  return u.href
+}

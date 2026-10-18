@@ -1,4 +1,5 @@
 import { motion } from 'motion/react'
+import { returnUrl } from '../lib/portal'
 
 // Where the womb button sits, as a fraction of the viewport. The reveal starts here.
 const ORIGIN = { x: 0.5, y: 0.62 }
@@ -13,8 +14,7 @@ interface Props {
 
 /** The womb opens out from the button into the welcome. */
 export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: Props) {
-  // Only offer http(s) links back; `url` comes straight from the query string.
-  const safeUrl = originalUrl && /^https?:\/\//i.test(originalUrl) ? originalUrl : null
+  const backTo = returnUrl(originalUrl)
 
   return (
     <motion.div
@@ -55,19 +55,16 @@ export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: P
               {new Date(expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
             </p>
           )}
-          {/* Goes on to the page they were opening; without one, try to close the sign-in window. */}
-          <a
-            href={safeUrl ?? '#'}
-            onClick={(e) => {
-              if (!safeUrl) {
-                e.preventDefault()
-                window.close()
-              }
-            }}
-            className="mt-4 inline-block rounded-full bg-rose-950/40 px-6 py-2 text-sm font-semibold text-rose-50 backdrop-blur hover:bg-rose-950/60"
-          >
-            done
-          </a>
+          {/* Only when there's a real page to go back to. Usually there isn't (the phone's own
+              connectivity check), and the sign-in sheet's own "Done" closes it instead. */}
+          {backTo && (
+            <a
+              href={backTo}
+              className="mt-4 inline-block rounded-full bg-rose-950/40 px-6 py-2 text-sm font-semibold text-rose-50 backdrop-blur hover:bg-rose-950/60"
+            >
+              done
+            </a>
+          )}
         </motion.div>
       </div>
     </motion.div>
