@@ -47,6 +47,8 @@ The flake exports a package and a NixOS module. In your system flake:
 ```nix
 {
   inputs.umbilical.url = "github:NathanRignall/umbilical";
+  # Optional: the module builds the portal with your system's own pkgs either way;
+  # this only avoids fetching a second nixpkgs for the flake's other outputs.
   inputs.umbilical.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { nixpkgs, umbilical, ... }: {
@@ -70,15 +72,20 @@ The flake exports a package and a NixOS module. In your system flake:
 }
 ```
 
-Put the key on the Pi, outside the Nix store (or use sops-nix or agenix):
+`environmentFile` is any file containing `UNIFI_API_KEY=...`, read at runtime so the key stays
+out of the Nix store. Write it by hand, or with sops-nix, agenix or a Vault agent template:
 
 ```sh
 echo 'UNIFI_API_KEY=xxxxxxxx' | sudo install -m 600 /dev/stdin /etc/umbilical.env
 ```
 
+If the file is written asynchronously at boot (e.g. by a Vault agent), the service keeps retrying
+every 5 seconds until it appears.
+
 The service listens on :80 and opens the firewall port. It runs as an unprivileged dynamic user
-with systemd sandboxing. Logs: `journalctl -u umbilical -f`. The first build compiles Rust and
-npm deps on the Pi, which takes a while. To build on a faster machine instead, use
+with systemd sandboxing. Logs: `journalctl -u umbilical -f`. The package is built with the
+host's nixpkgs; the first build compiles the Rust server on the Pi, which takes a while (the web
+page is built with the build machine's node, so cross builds don't compile node). To build on a faster machine instead, use
 `nixos-rebuild switch --flake .#pi --target-host pi --build-host <x86 box with aarch64 binfmt>`.
 
 `nix develop` gives a shell with cargo, rustc and node. `nix flake check` runs a NixOS VM test.

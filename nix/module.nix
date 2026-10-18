@@ -1,4 +1,3 @@
-self:
 {
   config,
   lib,
@@ -17,8 +16,10 @@ in
 
     package = mkOption {
       type = types.package;
-      default = self.packages.${pkgs.stdenv.hostPlatform.system}.umbilical;
-      defaultText = lib.literalExpression "umbilical.packages.\${system}.umbilical";
+      # Built with the host's own nixpkgs, so it matches the system (and its binary cache)
+      # whatever nixpkgs that is.
+      default = pkgs.callPackage ./package.nix { };
+      defaultText = lib.literalExpression "pkgs.callPackage ./package.nix { }";
     };
 
     address = mkOption {

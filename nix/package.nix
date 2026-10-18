@@ -1,12 +1,15 @@
 {
   lib,
-  buildNpmPackage,
-  importNpmLock,
+  buildPackages,
   rustPlatform,
   makeWrapper,
 }:
 
 let
+  # The page is plain HTML/JS for the guest's browser, so build it with the build machine's
+  # node: identical output, and cross builds don't have to compile node for the target.
+  inherit (buildPackages) buildNpmPackage importNpmLock;
+
   web = buildNpmPackage {
     pname = "umbilical-web";
     version = "0.1.0";
