@@ -55,14 +55,19 @@ export function Born({ title, subtitle, wombSticker, expiresAt, originalUrl }: P
               {new Date(expiresAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}
             </p>
           )}
-          {safeUrl && (
-            <a
-              href={safeUrl}
-              className="mt-4 inline-block rounded-full bg-rose-950/40 px-5 py-2 text-sm font-semibold text-rose-50 backdrop-blur hover:bg-rose-950/60"
-            >
-              carry on where you were going →
-            </a>
-          )}
+          {/* Goes on to the page they were opening; without one, try to close the sign-in window. */}
+          <a
+            href={safeUrl ?? '#'}
+            onClick={(e) => {
+              if (!safeUrl) {
+                e.preventDefault()
+                window.close()
+              }
+            }}
+            className="mt-4 inline-block rounded-full bg-rose-950/40 px-6 py-2 text-sm font-semibold text-rose-50 backdrop-blur hover:bg-rose-950/60"
+          >
+            done
+          </a>
         </motion.div>
       </div>
     </motion.div>
