@@ -103,42 +103,46 @@ export default function Admin() {
               {g.ip ?? 'offline'} · {g.mac}
               {!g.joined && g.ip ? ' · not joined' : ''}
             </p>
-            <div className="mt-3 space-y-2">
+            <div className="mt-3 divide-y divide-white/10 border-t border-white/10">
               {groups.map((grp) => {
                 const has = grp.id in g.access
                 const key = `${grp.id}/${g.mac}`
                 return (
-                  <div key={grp.id} className="flex flex-wrap items-center gap-2">
-                    <span className={`w-28 shrink-0 text-sm ${has ? 'text-emerald-300' : 'text-rose-100/80'}`}>
-                      {grp.emoji} {grp.label}
-                    </span>
-                    {has && (
-                      <span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                        {untilText(g.access[grp.id])}
+                  <div key={grp.id} className="space-y-2 py-3 last:pb-0">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-sm font-medium text-rose-50">
+                        {grp.emoji} {grp.label}
                       </span>
-                    )}
-                    {DURATIONS.map((d) => (
-                      <button
-                        key={d.label}
-                        type="button"
-                        title={d.minutes === null ? 'until revoked' : undefined}
-                        disabled={busy === key}
-                        onClick={() => act(grp.id, g.mac, d.minutes)}
-                        className="rounded-full bg-rose-500/20 px-3 py-1 text-sm font-medium text-rose-50 hover:bg-rose-500/30 disabled:opacity-40"
-                      >
-                        {d.label}
-                      </button>
-                    ))}
-                    {has && (
-                      <button
-                        type="button"
-                        disabled={busy === key}
-                        onClick={() => act(grp.id, g.mac, 'revoke')}
-                        className="rounded-full px-2 py-1 text-sm font-medium text-rose-200/70 hover:bg-white/10 disabled:opacity-40"
-                      >
-                        revoke
-                      </button>
-                    )}
+                      <span className={`text-xs ${has ? 'font-medium text-emerald-300' : 'text-rose-200/40'}`}>
+                        {has ? untilText(g.access[grp.id]) : 'off'}
+                      </span>
+                    </div>
+                    <div className="flex gap-2">
+                      <div className="flex flex-1 overflow-hidden rounded-full bg-rose-500/15">
+                        {DURATIONS.map((d) => (
+                          <button
+                            key={d.label}
+                            type="button"
+                            title={d.minutes === null ? 'until revoked' : `for ${d.label}`}
+                            disabled={busy === key}
+                            onClick={() => act(grp.id, g.mac, d.minutes)}
+                            className="flex-1 border-l border-white/10 py-1.5 text-sm font-medium text-rose-50 first:border-l-0 hover:bg-rose-500/25 disabled:opacity-40"
+                          >
+                            {d.label}
+                          </button>
+                        ))}
+                      </div>
+                      {has && (
+                        <button
+                          type="button"
+                          disabled={busy === key}
+                          onClick={() => act(grp.id, g.mac, 'revoke')}
+                          className="rounded-full px-3 py-1.5 text-sm font-medium text-rose-200/70 ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
+                        >
+                          revoke
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )
               })}
