@@ -113,12 +113,24 @@ export default function Admin() {
                       <span className="text-sm font-medium text-rose-50">
                         {grp.emoji} {grp.label}
                       </span>
-                      <span className={`text-xs ${has ? 'font-medium text-emerald-300' : 'text-rose-200/40'}`}>
-                        {has ? untilText(g.access[grp.id]) : 'off'}
-                      </span>
+                      {has ? (
+                        <span className="flex items-baseline gap-2 text-xs">
+                          <span className="font-medium text-emerald-300">{untilText(g.access[grp.id])}</span>
+                          {/* Up here rather than beside the buttons, so the button bar never changes width. */}
+                          <button
+                            type="button"
+                            disabled={busy === key}
+                            onClick={() => act(grp.id, g.mac, 'revoke')}
+                            className="text-rose-200/60 underline-offset-2 hover:text-rose-50 hover:underline disabled:opacity-40"
+                          >
+                            revoke
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="text-xs text-rose-200/40">off</span>
+                      )}
                     </div>
-                    <div className="flex gap-2">
-                      <div className="flex flex-1 overflow-hidden rounded-full bg-rose-500/15">
+                    <div className="flex overflow-hidden rounded-full bg-rose-500/15">
                         {DURATIONS.map((d) => (
                           <button
                             key={d.label}
@@ -131,17 +143,6 @@ export default function Admin() {
                             {d.label}
                           </button>
                         ))}
-                      </div>
-                      {has && (
-                        <button
-                          type="button"
-                          disabled={busy === key}
-                          onClick={() => act(grp.id, g.mac, 'revoke')}
-                          className="rounded-full px-3 py-1.5 text-sm font-medium text-rose-200/70 ring-1 ring-white/15 hover:bg-white/10 disabled:opacity-40"
-                        >
-                          revoke
-                        </button>
-                      )}
                     </div>
                   </div>
                 )
