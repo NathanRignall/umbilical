@@ -77,6 +77,57 @@ in
       };
     };
 
+    access = mkOption {
+      description = ''
+        Things guests can be given access to, by id (used in URLs, e.g. /tv). Each one is a UniFi
+        firewall policy (Hotspot zone -> the thing, action Allow, source by MAC address) whose
+        source MAC list the portal manages; create the policy once in UniFi. Grant access from the
+        admin page, or let guests do it themselves by scanning a QR code for /<id>.
+      '';
+      default = {
+        speakers.emoji = "🔊";
+      };
+      example = lib.literalExpression ''
+        {
+          speakers = { emoji = "🔊"; selfService.minutes = 240; };
+          tv = { emoji = "📺"; label = "TV"; };
+        }
+      '';
+      type = types.attrsOf (
+        types.submodule (
+          { name, ... }:
+          {
+            options = {
+              label = mkOption {
+                type = types.str;
+                default = name;
+                description = "Shown to people, e.g. \"TV\".";
+              };
+              emoji = mkOption {
+                type = types.str;
+                default = "";
+              };
+              policy = mkOption {
+                type = types.str;
+                default = "umbilical: ${name}";
+                description = "Name of the UniFi firewall policy this group edits.";
+              };
+              selfService.minutes = mkOption {
+                type = types.nullOr types.ints.positive;
+                default = null;
+                example = 240;
+                description = ''
+                  Let guests turn this on themselves by opening /<id> (print the QR code from the
+                  admin page), for this many minutes. null = admin page only. The device is found
+                  by its IP, so it only works from the guest Wi-Fi.
+                '';
+              };
+            };
+          }
+        )
+      );
+    };
+
     admin = {
       allowedSubnets = mkOption {
         type = types.listOf types.str;
@@ -84,29 +135,9 @@ in
         example = [ "10.81.0.0/24" ];
         description = ''
           Networks allowed to open the admin page (/admin), where you can give a guest temporary
-          access to the speakers. Requests from anywhere else, including the guest Wi-Fi, get a
-          404. Empty disables the admin page.
-        '';
-      };
-
-      speakersPolicy = mkOption {
-        type = types.str;
-        default = "umbilical: speakers";
-        description = ''
-          Name of the UniFi firewall policy (Hotspot zone -> speakers, action Allow, source by
-          MAC address) whose source MAC list the admin page manages. Create it once in UniFi.
-        '';
-      };
-
-      selfService.minutes = mkOption {
-        type = types.nullOr types.ints.positive;
-        default = null;
-        example = 240;
-        description = ''
-          Let guests turn on speaker access themselves by opening /speakers (print the QR code
-          from the admin page), for this many minutes. null disables it. The device is found by
-          its IP, so it only works from the guest Wi-Fi. To require a key in the QR code, put
-          `SPEAKERS_QR_KEY=...` in {option}`environmentFile`; change it to retire old codes.
+          access to the things in {option}`access`. Requests from anywhere else, including the guest
+          Wi-Fi, get a 404. Empty disables the admin page. Use [ "127.0.0.1/32" ] to allow only a
+          local reverse proxy or Cloudflare tunnel (point it at 127.0.0.1, not localhost).
         '';
       };
 
@@ -114,7 +145,11 @@ in
         type = types.nullOr types.str;
         default = null;
         example = "http://communalwomb.com";
-        description = "Base URL the printed QR code points at. Defaults to however you opened the admin page.";
+        description = ''
+          Base URL the printed QR codes point at. Defaults to however you opened the admin page.
+          To require a key in the QR codes, put `QR_KEY=...` in {option}`environmentFile`; change it
+          to retire old codes.
+        '';
       };
     };
 
@@ -184,8 +219,12 @@ in
         GUEST_TX_KBPS = lib.mapNullable toString cfg.guest.txKbps;
         UNIFI_SITE = cfg.unifi.site;
         ADMIN_ALLOWED_SUBNETS = lib.concatStringsSep "," cfg.admin.allowedSubnets;
-        SPEAKERS_POLICY_NAME = cfg.admin.speakersPolicy;
-        SPEAKERS_SELF_SERVICE_MINUTES = lib.mapNullable toString cfg.admin.selfService.minutes;
+        ACCESS_GROUPS = builtins.toJSON (
+          lib.mapAttrs (_: g: {
+            inherit (g) label emoji policy;
+            selfServiceMinutes = g.selfService.minutes;
+          }) cfg.access
+        );
         PUBLIC_URL = cfg.admin.publicUrl;
         # Admin page grants survive restarts. On impermanent hosts, persist /var/lib/private/umbilical.
         STATE_DIR = "/var/lib/umbilical";

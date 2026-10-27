@@ -32,8 +32,7 @@ struct AppState {
     grants: grants::Grants,
     site: String,
     admin_subnets: Vec<IpNet>,
-    speakers_policy: String,
-    self_service_minutes: Option<u32>,
+    groups: std::collections::BTreeMap<String, config::Group>,
     qr_key: Option<String>,
     public_url: Option<String>,
     /// One firewall-policy update at a time, so overlapping clicks can't finish out of order.
@@ -66,19 +65,18 @@ async fn main() -> anyhow::Result<()> {
         grants: grants::Grants::load(cfg.state_dir.clone()).await,
         site: cfg.site.clone(),
         admin_subnets: cfg.admin_subnets.clone(),
-        speakers_policy: cfg.speakers_policy.clone(),
+        groups: cfg.groups.clone(),
         sync_lock: Default::default(),
-        self_service_minutes: cfg.self_service_minutes,
         qr_key: cfg.qr_key.clone(),
         public_url: cfg.public_url.clone(),
     });
     if state.admin_subnets.is_empty() {
         info!("admin page disabled (ADMIN_ALLOWED_SUBNETS not set)");
     } else {
-        info!(subnets = ?state.admin_subnets, policy = %state.speakers_policy, "admin page enabled");
+        info!(subnets = ?state.admin_subnets, "admin page enabled");
     }
-    if let Some(minutes) = state.self_service_minutes {
-        info!(minutes, qr_key = state.qr_key.is_some(), "speaker self-service enabled at /speakers");
+    for (id, g) in &state.groups {
+        info!(group = %id, policy = %g.policy, self_service_minutes = ?g.self_service_minutes, "access group");
     }
     tokio::spawn(admin::run_expiry(state.clone()));
 
@@ -91,8 +89,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/authorize", post(authorize))
         .route("/api/admin/guests", get(admin::list))
-        .route("/api/admin/speakers/{mac}", post(admin::grant).delete(admin::revoke))
-        .route("/api/speakers", post(admin::self_service))
+        .route("/api/admin/access/{group}/{mac}", post(admin::grant).delete(admin::revoke))
+        .route("/api/access/{group}", post(admin::self_service))
         .with_state(state.clone())
         .fallback_service(spa)
         .layer(middleware::from_fn(log_page_visit))

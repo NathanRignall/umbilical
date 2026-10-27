@@ -1,4 +1,6 @@
-use std::{env, net::SocketAddr, path::PathBuf};
+use std::{collections::BTreeMap, env, net::SocketAddr, path::PathBuf};
+
+use serde::Deserialize;
 
 use anyhow::{Context, Result, bail};
 use ipnet::IpNet;
@@ -37,11 +39,10 @@ pub struct Config {
     pub site: String,
     /// Clients allowed to use the admin page. Empty disables it.
     pub admin_subnets: Vec<IpNet>,
-    /// Name of the firewall policy whose source MAC list the admin page manages.
-    pub speakers_policy: String,
-    /// Self-service speaker access via /speakers (the QR code): how long it lasts. None = off.
-    pub self_service_minutes: Option<u32>,
-    /// If set, /speakers?k=<key> must carry it; change it to retire printed QR codes.
+    /// Things guests can be given access to (speakers, TV, ...), by id. Each has a UniFi
+    /// firewall policy whose source MAC list we manage.
+    pub groups: BTreeMap<String, Group>,
+    /// If set, the QR links (/<group>?k=<key>) must carry it; change it to retire printed codes.
     pub qr_key: Option<String>,
     /// Base URL for the printed QR code, e.g. http://communalwomb.com. Defaults to the admin page's own.
     pub public_url: Option<String>,
@@ -95,12 +96,58 @@ impl Config {
             state_dir: var("STATE_DIR").unwrap_or_else(|| ".".into()).into(),
             site: var("UNIFI_SITE").unwrap_or_else(|| "default".into()),
             admin_subnets,
-            speakers_policy: var("SPEAKERS_POLICY_NAME").unwrap_or_else(|| "umbilical: speakers".into()),
-            self_service_minutes: num("SPEAKERS_SELF_SERVICE_MINUTES")?,
-            qr_key: var("SPEAKERS_QR_KEY"),
+            groups: groups()?,
+            qr_key: var("QR_KEY"),
             public_url: var("PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned()),
         })
     }
+}
+
+/// One thing guests can be given access to.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Group {
+    /// Shown to people, e.g. "speakers" or "TV". Defaults to the id.
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub emoji: String,
+    /// UniFi firewall policy name. Defaults to "umbilical: <id>".
+    #[serde(default)]
+    pub policy: String,
+    /// Guests can turn it on themselves at /<id> (the QR code) for this long. None = admin only.
+    #[serde(default)]
+    pub self_service_minutes: Option<u32>,
+}
+
+/// ACCESS_GROUPS is JSON: {"speakers": {"emoji": "🔊", "selfServiceMinutes": 240}, "tv": {...}}.
+/// Unset means a single "speakers" group.
+fn groups() -> Result<BTreeMap<String, Group>> {
+    let mut groups: BTreeMap<String, Group> = match var("ACCESS_GROUPS") {
+        Some(json) => serde_json::from_str(&json).context("ACCESS_GROUPS must be a JSON object of groups")?,
+        None => BTreeMap::from([("speakers".to_owned(), Group {
+            label: String::new(),
+            emoji: "🔊".into(),
+            policy: String::new(),
+            self_service_minutes: None,
+        })]),
+    };
+    for (id, g) in &mut groups {
+        // The id becomes a URL path (/<id>), so keep it simple and clear of the portal's own paths.
+        if id.is_empty()
+            || !id.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+            || ["admin", "api", "assets", "guest"].contains(&id.as_str())
+        {
+            bail!("ACCESS_GROUPS: bad group id {id:?} (use lowercase letters, digits and dashes)");
+        }
+        if g.label.is_empty() {
+            g.label = id.clone();
+        }
+        if g.policy.is_empty() {
+            g.policy = format!("umbilical: {id}");
+        }
+    }
+    Ok(groups)
 }
 
 fn var(key: &str) -> Option<String> {

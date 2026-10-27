@@ -6,15 +6,22 @@ interface Guest {
   ip: string | null
   connectedAt: string | null
   joined: boolean
-  speakers: boolean
-  /** Unix seconds; null with speakers=true means until revoked. */
-  speakersUntil: number | null
+  /** group id -> until (Unix seconds; null = until revoked). Only groups they have. */
+  access: Record<string, number | null>
+}
+
+interface Group {
+  id: string
+  label: string
+  emoji: string
+  policy: string
+  selfService: { minutes: number; url: string } | null
 }
 
 const DURATIONS: { label: string; minutes: number | null }[] = [
-  { label: '3 hours', minutes: 180 },
+  { label: '3h', minutes: 180 },
   { label: '1 day', minutes: 1440 },
-  { label: 'until revoked', minutes: null },
+  { label: '∞', minutes: null },
 ]
 
 async function call(path: string, init?: RequestInit) {
@@ -26,19 +33,17 @@ async function call(path: string, init?: RequestInit) {
   return res.status === 204 ? null : res.json()
 }
 
-function until(g: Guest) {
-  if (!g.speakers) return null
-  if (g.speakersUntil === null) return 'until revoked'
-  const d = new Date(g.speakersUntil * 1000)
+function untilText(until: number | null) {
+  if (until === null) return 'until revoked'
+  const d = new Date(until * 1000)
   const sameDay = d.toDateString() === new Date().toDateString()
   return `until ${d.toLocaleString([], sameDay ? { timeStyle: 'short' } : { weekday: 'short', timeStyle: 'short' })}`
 }
 
-/** Host-only page (the server 404s it for guests): give a guest temporary access to the speakers. */
+/** Host-only page (the server 404s it for everyone else): give a guest temporary access to things. */
 export default function Admin() {
   const [guests, setGuests] = useState<Guest[] | null>(null)
-  const [policy, setPolicy] = useState('')
-  const [selfService, setSelfService] = useState<{ minutes: number; url: string } | null>(null)
+  const [groups, setGroups] = useState<Group[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -46,8 +51,7 @@ export default function Admin() {
     try {
       const data = await call('/api/admin/guests')
       setGuests(data.guests)
-      setPolicy(data.policy)
-      setSelfService(data.selfService ?? null)
+      setGroups(data.groups)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -60,11 +64,13 @@ export default function Admin() {
     return () => clearInterval(t)
   }, [load])
 
-  async function act(mac: string, minutes: number | null | 'revoke') {
-    setBusy(mac)
+  async function act(group: string, mac: string, minutes: number | null | 'revoke') {
+    const key = `${group}/${mac}`
+    setBusy(key)
     try {
-      if (minutes === 'revoke') await call(`/api/admin/speakers/${mac}`, { method: 'DELETE' })
-      else await call(`/api/admin/speakers/${mac}`, { method: 'POST', body: JSON.stringify({ minutes }) })
+      const path = `/api/admin/access/${group}/${mac}`
+      if (minutes === 'revoke') await call(path, { method: 'DELETE' })
+      else await call(path, { method: 'POST', body: JSON.stringify({ minutes }) })
       await load()
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -77,7 +83,8 @@ export default function Admin() {
     <main className="mx-auto min-h-full max-w-xl px-4 py-10">
       <h1 className="text-3xl font-black tracking-tight text-rose-50">womb admin</h1>
       <p className="mt-1 text-sm text-rose-200/60">
-        Give a guest access to the speakers. Edits the UniFi firewall rule “{policy || '…'}”.
+        Give a guest access to {groups.map((g) => g.label).join(' or ') || '…'}. Each edits its own UniFi firewall
+        rule.
       </p>
 
       {error && (
@@ -91,55 +98,67 @@ export default function Admin() {
         {guests?.length === 0 && <li className="text-sm text-rose-200/60">No guests connected.</li>}
         {guests?.map((g) => (
           <li key={g.mac} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-rose-50">{g.name ?? 'Unknown device'}</p>
-                <p className="mt-0.5 font-mono text-xs text-rose-200/50">
-                  {g.ip ?? 'offline'} · {g.mac}
-                  {!g.joined && g.ip ? ' · not joined' : ''}
-                </p>
-              </div>
-              {g.speakers && (
-                <span className="shrink-0 rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
-                  🔊 {until(g)}
-                </span>
-              )}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {DURATIONS.map((d) => (
-                <button
-                  key={d.label}
-                  type="button"
-                  disabled={busy === g.mac}
-                  onClick={() => act(g.mac, d.minutes)}
-                  className="rounded-full bg-rose-500/20 px-3 py-1.5 text-sm font-medium text-rose-50 hover:bg-rose-500/30 disabled:opacity-40"
-                >
-                  {g.speakers ? '' : 'speakers '}
-                  {d.label}
-                </button>
-              ))}
-              {g.speakers && (
-                <button
-                  type="button"
-                  disabled={busy === g.mac}
-                  onClick={() => act(g.mac, 'revoke')}
-                  className="rounded-full px-3 py-1.5 text-sm font-medium text-rose-200/70 hover:bg-white/10 disabled:opacity-40"
-                >
-                  revoke
-                </button>
-              )}
+            <p className="truncate font-semibold text-rose-50">{g.name ?? 'Unknown device'}</p>
+            <p className="mt-0.5 font-mono text-xs text-rose-200/50">
+              {g.ip ?? 'offline'} · {g.mac}
+              {!g.joined && g.ip ? ' · not joined' : ''}
+            </p>
+            <div className="mt-3 space-y-2">
+              {groups.map((grp) => {
+                const has = grp.id in g.access
+                const key = `${grp.id}/${g.mac}`
+                return (
+                  <div key={grp.id} className="flex flex-wrap items-center gap-2">
+                    <span className={`w-28 shrink-0 text-sm ${has ? 'text-emerald-300' : 'text-rose-100/80'}`}>
+                      {grp.emoji} {grp.label}
+                    </span>
+                    {has && (
+                      <span className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                        {untilText(g.access[grp.id])}
+                      </span>
+                    )}
+                    {DURATIONS.map((d) => (
+                      <button
+                        key={d.label}
+                        type="button"
+                        title={d.minutes === null ? 'until revoked' : undefined}
+                        disabled={busy === key}
+                        onClick={() => act(grp.id, g.mac, d.minutes)}
+                        className="rounded-full bg-rose-500/20 px-3 py-1 text-sm font-medium text-rose-50 hover:bg-rose-500/30 disabled:opacity-40"
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                    {has && (
+                      <button
+                        type="button"
+                        disabled={busy === key}
+                        onClick={() => act(grp.id, g.mac, 'revoke')}
+                        className="rounded-full px-2 py-1 text-sm font-medium text-rose-200/70 hover:bg-white/10 disabled:opacity-40"
+                      >
+                        revoke
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </li>
         ))}
       </ul>
 
-      {selfService && <QrCard minutes={selfService.minutes} url={selfService.url} />}
+      {groups
+        .filter((grp) => grp.selfService)
+        .map((grp) => (
+          <QrCard key={grp.id} group={grp} />
+        ))}
     </main>
   )
 }
 
-/** The printable QR code for /speakers. The QR library only loads here, not on the guest page. */
-function QrCard({ minutes, url }: { minutes: number; url: string }) {
+/** A printable QR code for /<group>. The QR library only loads here, not on the guest page. */
+function QrCard({ group }: { group: Group }) {
+  const { minutes, url } = group.selfService!
   const link = url.startsWith('http') ? url : `${window.location.origin}${url}`
   const [svg, setSvg] = useState('')
   useEffect(() => {
@@ -150,14 +169,18 @@ function QrCard({ minutes, url }: { minutes: number; url: string }) {
   const hours = minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`
   return (
     <section className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <h2 className="font-semibold text-rose-50">Speaker QR code</h2>
+      <h2 className="font-semibold text-rose-50">
+        {group.emoji} {group.label} QR code
+      </h2>
       <p className="mt-1 text-sm text-rose-200/60">
-        Print this and put it by the speakers. Scanning it on the guest Wi-Fi gives that phone speaker access for{' '}
-        {hours}.
+        Print this and put it by the {group.label}. Scanning it on the guest Wi-Fi gives that phone access to the{' '}
+        {group.label} for {hours}.
       </p>
       <div className="mt-4 flex flex-col items-center gap-3 rounded-xl bg-white p-6 text-center text-black">
         <div className="w-56" dangerouslySetInnerHTML={{ __html: svg }} />
-        <p className="text-lg font-black tracking-tight">🔊 scan for the speakers</p>
+        <p className="text-lg font-black tracking-tight">
+          {group.emoji} scan for the {group.label}
+        </p>
       </div>
       <p className="mt-3 font-mono text-xs break-all text-rose-200/50">{link}</p>
     </section>

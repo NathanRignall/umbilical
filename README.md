@@ -40,50 +40,58 @@ The full API reference is on your console under **Network → Settings → Contr
 5. **Firewall:** on zone-based firewall setups, make sure the **Hotspot** zone may reach the portal
    host on TCP 80.
 
-## Give a guest the speakers (admin page)
+## Give guests extra access: speakers, TV, … (admin page and QR codes)
 
-`/admin` lists the guests on the hotspot, with buttons to let one of them reach the speakers for
-3 hours, a day, or until revoked. It only answers clients in the networks you allow (everyone
-else, including the guest Wi-Fi, gets a 404).
-
-How it works: the portal keeps a list of granted MACs (saved in its state directory) and writes it
-into the source of one UniFi firewall policy, switching the policy off when nobody is granted.
-Grants expire on their own; the portal checks every 30 seconds.
-
-One-time UniFi setup:
-
-1. Give the speakers fixed IPs.
-2. In the zone-based firewall (its menu location varies by Network version), create a policy
-   named **`umbilical: speakers`**
-   - Source: zone **Hotspot**, by **MAC address** (put any one MAC in; the portal replaces it)
-   - Destination: the speakers' zone, by the speakers' IP addresses
-   - Action: **Allow**. It can start disabled; the portal turns it on when someone is granted.
-3. For AirPlay/Cast discovery, turn on **mDNS** for the hotspot network and the speakers' network.
-   If a speaker shows up but won't play, also allow the speakers' replies back to the Hotspot zone.
-
-### Self-service: a QR code by the speakers
-
-Guests can also turn it on themselves: scanning a QR code for `/speakers` gives the phone that
-opened it speaker access for a set time (scanning again never shortens it). The portal finds the
-device by its IP, so it only works from the guest Wi-Fi, i.e. for people actually in the house.
-The admin page shows the code ready to print.
-
-- `admin.selfService.minutes = 240;` turns it on (off by default).
-- `admin.publicUrl = "http://communalwomb.com";` makes the QR code use your domain. Point the
-  domain's DNS A record at the portal's LAN IP (DNS only, not proxied), keep the `http://`, and
-  make sure joined guests can still reach the portal on port 80.
-- Optional: `SPEAKERS_QR_KEY=...` in the environment file puts a key in the QR code
-  (`/speakers?k=...`). Change it to retire codes that have been photographed.
-
-Then enable the page (NixOS):
+Each thing a guest can be given access to is an **access group** in config, backed by one UniFi
+firewall policy. A guest gets in either from the admin page (you press a button) or by scanning
+that group's QR code (self-service, optional per group).
 
 ```nix
-services.umbilical.admin.allowedSubnets = [ "10.81.0.0/24" ]; # your home LAN, not the guest one
+services.umbilical = {
+  access = {
+    speakers = { emoji = "🔊"; selfService.minutes = 240; }; # QR code at /speakers
+    tv       = { emoji = "📺"; label = "TV"; };              # admin page only
+  };
+  admin.allowedSubnets = [ "127.0.0.1/32" ];   # only via a local proxy / Cloudflare tunnel
+  admin.publicUrl = "http://portal.communalwomb.com";
+};
 ```
 
-(Without NixOS: `ADMIN_ALLOWED_SUBNETS=10.81.0.0/24`, `STATE_DIR=/var/lib/umbilical`,
-optionally `SPEAKERS_POLICY_NAME` and `UNIFI_SITE`.) The API key needs permission to edit
-firewall policies, which a key created by a site admin has.
+**How it works.** The portal keeps, per group, the MACs that have access and until when
+(`/var/lib/umbilical/grants.json`). After every grant, revoke, QR scan or expiry it rewrites that
+group's UniFi firewall policy through the Network API (`GET` the policy by name, then `PUT` it back
+with only the source MAC list and `enabled` changed), switching it off when nobody has access.
+Grants expire on their own (checked every 30 seconds); failed updates are retried. The saved list
+is the source of truth: MACs added to the policy by hand get replaced.
+
+**Admin page** (`/admin`): lists the guests on the hotspot with 3h / 1 day / ∞ / revoke buttons per
+group, and the printable QR codes. It only answers `admin.allowedSubnets` and returns 404 to
+everyone else, including guests. With `[ "127.0.0.1/32" ]`, expose it through a Cloudflare tunnel
+(service `http://127.0.0.1:80`, not `localhost`) behind Cloudflare Access.
+
+**QR codes** (`/<group>`): scanning gives the phone that opened it access for the group's
+`selfService.minutes` (scanning again never shortens it). The portal finds the device by asking
+UniFi which guest has the request's IP, so it only works from the guest Wi-Fi, after joining.
+`QR_KEY=...` in the environment file adds a key to every code (`/speakers?k=...`); change it to
+retire codes that have been photographed. Point `portal.communalwomb.com` at the portal's LAN IP
+(DNS only, not through the tunnel, or the portal can't see who's asking), keep `http://`, and make
+sure joined guests can still reach the portal on port 80.
+
+**One-time UniFi setup per group** (e.g. `tv`):
+
+1. Give the device(s) fixed IPs.
+2. In the zone-based firewall (its menu location varies by Network version), create a policy named
+   **`umbilical: tv`** (or set `access.tv.policy`):
+   - Source: zone **Hotspot**, by **MAC address** (put any one MAC in; the portal replaces it)
+   - Destination: the device's zone, by its IP address(es)
+   - Action: **Allow**. It can start disabled; the portal turns it on when someone has access.
+3. For AirPlay/Cast discovery, turn on **mDNS** for the hotspot network and the device's network.
+   If it shows up but won't play, also allow the device's replies back to the Hotspot zone.
+
+The API key needs permission to edit firewall policies, which a key created by a site admin has.
+Without NixOS, set `ACCESS_GROUPS` to the same as JSON
+(`{"speakers":{"emoji":"🔊","selfServiceMinutes":240},"tv":{"label":"TV"}}`) plus
+`ADMIN_ALLOWED_SUBNETS`, `PUBLIC_URL`, `STATE_DIR` and optionally `QR_KEY` and `UNIFI_SITE`.
 
 ## Deploy on NixOS (e.g. a Raspberry Pi)
 
