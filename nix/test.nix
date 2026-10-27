@@ -9,6 +9,7 @@ self:
       enable = true;
       unifi.mock = true;
       admin.allowedSubnets = [ "127.0.0.0/8" ];
+      admin.selfService.minutes = 240;
     };
   };
 
@@ -30,6 +31,12 @@ self:
         "-H 'content-type: application/json' -d '{\"minutes\":180}'"
     )
     machine.succeed("grep -q '1c:71:25:63:e4:24' /var/lib/umbilical/grants.json")
+    # Self-service (the QR code): mock mode treats the caller as guest 02:00:00:00:00:01.
+    out = machine.succeed(
+        "curl -sf -X POST http://localhost/api/speakers -H 'content-type: application/json' -d '{}'"
+    )
+    assert '"until":' in out, out
+    machine.succeed("grep -q '02:00:00:00:00:01' /var/lib/umbilical/grants.json")
     # Service runs unprivileged.
     machine.succeed("test \"$(systemctl show -p User --value umbilical)\" != root")
   '';

@@ -39,6 +39,12 @@ pub struct Config {
     pub admin_subnets: Vec<IpNet>,
     /// Name of the firewall policy whose source MAC list the admin page manages.
     pub speakers_policy: String,
+    /// Self-service speaker access via /speakers (the QR code): how long it lasts. None = off.
+    pub self_service_minutes: Option<u32>,
+    /// If set, /speakers?k=<key> must carry it; change it to retire printed QR codes.
+    pub qr_key: Option<String>,
+    /// Base URL for the printed QR code, e.g. http://communalwomb.com. Defaults to the admin page's own.
+    pub public_url: Option<String>,
 }
 
 impl Config {
@@ -90,6 +96,9 @@ impl Config {
             site: var("UNIFI_SITE").unwrap_or_else(|| "default".into()),
             admin_subnets,
             speakers_policy: var("SPEAKERS_POLICY_NAME").unwrap_or_else(|| "umbilical: speakers".into()),
+            self_service_minutes: num("SPEAKERS_SELF_SERVICE_MINUTES")?,
+            qr_key: var("SPEAKERS_QR_KEY"),
+            public_url: var("PUBLIC_URL").map(|u| u.trim_end_matches('/').to_owned()),
         })
     }
 }

@@ -61,6 +61,20 @@ One-time UniFi setup:
 3. For AirPlay/Cast discovery, turn on **mDNS** for the hotspot network and the speakers' network.
    If a speaker shows up but won't play, also allow the speakers' replies back to the Hotspot zone.
 
+### Self-service: a QR code by the speakers
+
+Guests can also turn it on themselves: scanning a QR code for `/speakers` gives the phone that
+opened it speaker access for a set time (scanning again never shortens it). The portal finds the
+device by its IP, so it only works from the guest Wi-Fi, i.e. for people actually in the house.
+The admin page shows the code ready to print.
+
+- `admin.selfService.minutes = 240;` turns it on (off by default).
+- `admin.publicUrl = "http://communalwomb.com";` makes the QR code use your domain. Point the
+  domain's DNS A record at the portal's LAN IP (DNS only, not proxied), keep the `http://`, and
+  make sure joined guests can still reach the portal on port 80.
+- Optional: `SPEAKERS_QR_KEY=...` in the environment file puts a key in the QR code
+  (`/speakers?k=...`). Change it to retire codes that have been photographed.
+
 Then enable the page (NixOS):
 
 ```nix

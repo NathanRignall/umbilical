@@ -97,6 +97,25 @@ in
           MAC address) whose source MAC list the admin page manages. Create it once in UniFi.
         '';
       };
+
+      selfService.minutes = mkOption {
+        type = types.nullOr types.ints.positive;
+        default = null;
+        example = 240;
+        description = ''
+          Let guests turn on speaker access themselves by opening /speakers (print the QR code
+          from the admin page), for this many minutes. null disables it. The device is found by
+          its IP, so it only works from the guest Wi-Fi. To require a key in the QR code, put
+          `SPEAKERS_QR_KEY=...` in {option}`environmentFile`; change it to retire old codes.
+        '';
+      };
+
+      publicUrl = mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        example = "http://communalwomb.com";
+        description = "Base URL the printed QR code points at. Defaults to however you opened the admin page.";
+      };
     };
 
     environmentFile = mkOption {
@@ -166,6 +185,8 @@ in
         UNIFI_SITE = cfg.unifi.site;
         ADMIN_ALLOWED_SUBNETS = lib.concatStringsSep "," cfg.admin.allowedSubnets;
         SPEAKERS_POLICY_NAME = cfg.admin.speakersPolicy;
+        SPEAKERS_SELF_SERVICE_MINUTES = lib.mapNullable toString cfg.admin.selfService.minutes;
+        PUBLIC_URL = cfg.admin.publicUrl;
         # Admin page grants survive restarts. On impermanent hosts, persist /var/lib/private/umbilical.
         STATE_DIR = "/var/lib/umbilical";
       };

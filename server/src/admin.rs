@@ -64,6 +64,16 @@ pub struct Guest {
 pub struct GuestList {
     guests: Vec<Guest>,
     policy: String,
+    /// The QR code's link and how long it grants, when self-service is on.
+    self_service: Option<SelfService>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfService {
+    minutes: u32,
+    /// Absolute when PUBLIC_URL is set, else a path the page joins to its own origin.
+    url: String,
 }
 
 pub async fn list(State(state): State<Arc<AppState>>) -> Result<Json<GuestList>, AdminError> {
@@ -106,7 +116,14 @@ pub async fn list(State(state): State<Arc<AppState>>) -> Result<Json<GuestList>,
             });
         }
     }
-    Ok(Json(GuestList { guests, policy: state.speakers_policy.clone() }))
+    let self_service = state.self_service_minutes.map(|minutes| {
+        let path = match &state.qr_key {
+            Some(k) => format!("/speakers?k={k}"),
+            None => "/speakers".to_owned(),
+        };
+        SelfService { minutes, url: format!("{}{path}", state.public_url.as_deref().unwrap_or("")) }
+    });
+    Ok(Json(GuestList { guests, policy: state.speakers_policy.clone(), self_service }))
 }
 
 #[derive(Deserialize)]
@@ -158,7 +175,8 @@ pub async fn sync(state: &AppState) -> Result<(), AdminError> {
 
 /// Bring UniFi in line at startup, then expire grants as they run out.
 pub async fn run_expiry(state: Arc<AppState>) {
-    if state.admin_subnets.is_empty() {
+    // Grants come from the admin page and/or the QR code; with neither, there's nothing to do.
+    if state.admin_subnets.is_empty() && state.self_service_minutes.is_none() {
         return;
     }
     if let Err(e) = sync(&state).await {
@@ -181,4 +199,57 @@ pub async fn run_expiry(state: Arc<AppState>) {
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct SelfServiceRequest {
+    #[serde(default)]
+    k: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelfServiceResponse {
+    /// Unix seconds; null = until revoked.
+    until: Option<u64>,
+}
+
+/// /speakers (the QR code): the guest's own device gets speaker access for a while.
+/// The device is found by the request's IP, so this only works from the guest Wi-Fi.
+pub async fn self_service(
+    State(state): State<Arc<AppState>>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    Json(req): Json<SelfServiceRequest>,
+) -> Result<Json<SelfServiceResponse>, AdminError> {
+    let Some(minutes) = state.self_service_minutes else {
+        return Err(AdminError(StatusCode::NOT_FOUND, "Speaker access isn't available here.".into()));
+    };
+    if state.qr_key.is_some() && req.k != state.qr_key {
+        warn!(ip = %peer.ip(), "speakers: wrong or missing QR key");
+        return Err(AdminError(
+            StatusCode::FORBIDDEN,
+            "This code doesn't work any more. Scan the one by the speakers.".into(),
+        ));
+    }
+    let ip = peer.ip().to_string();
+    let mac = match &state.unifi {
+        Some(u) => {
+            let site = u.site_id(&state.site).await?;
+            let guest = u.guest_by_ip(&site, &ip).await?.ok_or_else(|| {
+                AdminError(StatusCode::CONFLICT, "Connect to the womb Wi-Fi first, then scan again.".into())
+            })?;
+            if !guest.access.authorized {
+                return Err(AdminError(StatusCode::CONFLICT, "Join the Wi-Fi first, then scan again.".into()));
+            }
+            guest.mac_address.as_deref().and_then(normalize_mac)
+        }
+        // Mock mode: pretend every visitor is the same guest.
+        None => Some("02:00:00:00:00:01".to_owned()),
+    }
+    .ok_or_else(|| AdminError(StatusCode::BAD_GATEWAY, "Couldn't identify your device.".into()))?;
+
+    let until = state.grants.extend(mac.clone(), minutes).await;
+    info!(%ip, %mac, ?until, "speakers self-service");
+    sync(&state).await?;
+    Ok(Json(SelfServiceResponse { until }))
 }

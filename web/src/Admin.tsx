@@ -38,6 +38,7 @@ function until(g: Guest) {
 export default function Admin() {
   const [guests, setGuests] = useState<Guest[] | null>(null)
   const [policy, setPolicy] = useState('')
+  const [selfService, setSelfService] = useState<{ minutes: number; url: string } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
@@ -46,6 +47,7 @@ export default function Admin() {
       const data = await call('/api/admin/guests')
       setGuests(data.guests)
       setPolicy(data.policy)
+      setSelfService(data.selfService ?? null)
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
@@ -130,6 +132,34 @@ export default function Admin() {
           </li>
         ))}
       </ul>
+
+      {selfService && <QrCard minutes={selfService.minutes} url={selfService.url} />}
     </main>
+  )
+}
+
+/** The printable QR code for /speakers. The QR library only loads here, not on the guest page. */
+function QrCard({ minutes, url }: { minutes: number; url: string }) {
+  const link = url.startsWith('http') ? url : `${window.location.origin}${url}`
+  const [svg, setSvg] = useState('')
+  useEffect(() => {
+    import('qrcode').then((qr) =>
+      qr.toString(link, { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }).then(setSvg),
+    )
+  }, [link])
+  const hours = minutes % 60 === 0 ? `${minutes / 60} hour${minutes === 60 ? '' : 's'}` : `${minutes} minutes`
+  return (
+    <section className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-4">
+      <h2 className="font-semibold text-rose-50">Speaker QR code</h2>
+      <p className="mt-1 text-sm text-rose-200/60">
+        Print this and put it by the speakers. Scanning it on the guest Wi-Fi gives that phone speaker access for{' '}
+        {hours}.
+      </p>
+      <div className="mt-4 flex flex-col items-center gap-3 rounded-xl bg-white p-6 text-center text-black">
+        <div className="w-56" dangerouslySetInnerHTML={{ __html: svg }} />
+        <p className="text-lg font-black tracking-tight">🔊 scan for the speakers</p>
+      </div>
+      <p className="mt-3 font-mono text-xs break-all text-rose-200/50">{link}</p>
+    </section>
   )
 }

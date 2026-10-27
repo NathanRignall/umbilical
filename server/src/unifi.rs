@@ -168,6 +168,13 @@ impl UniFi {
         }
     }
 
+    /// The guest using this IP, if any.
+    pub async fn guest_by_ip(&self, site_id: &str, ip: &str) -> Result<Option<GuestClient>, Error> {
+        let filter = format!("and(access.type.eq('GUEST'), ipAddress.eq('{ip}'))");
+        let page: Page<GuestClient> = self.get(&format!("/v1/sites/{site_id}/clients"), Some(&filter)).await?;
+        Ok(page.data.into_iter().next())
+    }
+
     /// The firewall policy with this name, as raw JSON (we send most of it back unchanged).
     pub async fn find_policy(&self, site_id: &str, name: &str) -> Result<Option<Value>, Error> {
         let page: Page<Value> = self.get(&format!("/v1/sites/{site_id}/firewall/policies?limit=200"), None).await?;

@@ -62,6 +62,20 @@ impl Grants {
         self.save(&s).await;
     }
 
+    /// Like `grant`, but never shortens an existing grant. Returns the resulting end time.
+    pub async fn extend(&self, mac: String, minutes: u32) -> Until {
+        let mut s = self.inner.lock().await;
+        let new = now() + u64::from(minutes) * 60;
+        let until = match s.speakers.get(&mac) {
+            Some(None) => None,
+            Some(Some(t)) => Some((*t).max(new)),
+            None => Some(new),
+        };
+        s.speakers.insert(mac, until);
+        self.save(&s).await;
+        until
+    }
+
     /// Returns whether anything was removed.
     pub async fn revoke(&self, mac: &str) -> bool {
         let mut s = self.inner.lock().await;
@@ -109,6 +123,13 @@ mod tests {
         assert_eq!(g2.macs().await, vec!["bb:bb:bb:bb:bb:bb".to_string()]);
         assert!(g2.revoke("bb:bb:bb:bb:bb:bb").await);
         assert!(!g2.revoke("bb:bb:bb:bb:bb:bb").await);
+
+        // extend never shortens: a forever grant stays forever, a longer one stays longer.
+        g2.grant("cc:cc:cc:cc:cc:cc".into(), None).await;
+        assert_eq!(g2.extend("cc:cc:cc:cc:cc:cc".into(), 10).await, None);
+        g2.grant("dd:dd:dd:dd:dd:dd".into(), Some(600)).await;
+        let long = g2.snapshot().await["dd:dd:dd:dd:dd:dd"];
+        assert_eq!(g2.extend("dd:dd:dd:dd:dd:dd".into(), 10).await, long);
         std::fs::remove_dir_all(dir).unwrap();
     }
 }
