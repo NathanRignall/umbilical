@@ -6,7 +6,7 @@ use std::{collections::HashMap, time::Duration};
 
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio::sync::RwLock;
 
 use crate::config::GuestLimits;
@@ -34,6 +34,17 @@ struct Site {
     id: String,
     internal_reference: Option<String>,
     name: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct GuestClient {
+    pub name: Option<String>,
+    pub mac_address: Option<String>,
+    pub ip_address: Option<String>,
+    pub connected_at: Option<String>,
+    #[serde(default)]
+    pub access: Access,
 }
 
 #[derive(Deserialize, Debug)]
@@ -132,6 +143,65 @@ impl UniFi {
     }
 
     /// Returns the authorization the controller says it granted, when the response includes it.
+    /// Guests currently connected to the site.
+    pub async fn list_guests(&self, site_id: &str) -> Result<Vec<GuestClient>, Error> {
+        let mut out = Vec::new();
+        let mut offset = 0;
+        loop {
+            let res = self
+                .http
+                .get(format!("{}/v1/sites/{site_id}/clients", self.base))
+                .query(&[("filter", "access.type.eq('GUEST')")])
+                .query(&[("limit", 200), ("offset", offset)])
+                .send()
+                .await?;
+            if !res.status().is_success() {
+                return Err(api_error(res).await);
+            }
+            let page: Page<GuestClient> = res.json().await?;
+            let n = page.data.len();
+            out.extend(page.data);
+            if n < 200 {
+                return Ok(out);
+            }
+            offset += 200;
+        }
+    }
+
+    /// The firewall policy with this name, as raw JSON (we send most of it back unchanged).
+    pub async fn find_policy(&self, site_id: &str, name: &str) -> Result<Option<Value>, Error> {
+        let page: Page<Value> = self.get(&format!("/v1/sites/{site_id}/firewall/policies?limit=200"), None).await?;
+        Ok(page.data.into_iter().find(|p| p["name"].as_str() == Some(name)))
+    }
+
+    /// Point a policy's source at exactly these MACs, disabling it when there are none
+    /// (UniFi requires at least one MAC in the filter). Everything else is kept as is.
+    pub async fn set_policy_macs(&self, site_id: &str, mut policy: Value, macs: &[String]) -> Result<(), Error> {
+        let id = policy["id"].as_str().unwrap_or_default().to_owned();
+        if let Some(obj) = policy.as_object_mut() {
+            for read_only in ["id", "index", "metadata"] {
+                obj.remove(read_only);
+            }
+        }
+        policy["enabled"] = Value::Bool(!macs.is_empty());
+        if !macs.is_empty() {
+            policy["source"]["trafficFilter"] = json!({
+                "type": "MAC_ADDRESS",
+                "macAddressFilter": { "macAddresses": macs },
+            });
+        }
+        let res = self
+            .http
+            .put(format!("{}/v1/sites/{site_id}/firewall/policies/{id}", self.base))
+            .json(&policy)
+            .send()
+            .await?;
+        if !res.status().is_success() {
+            return Err(api_error(res).await);
+        }
+        Ok(())
+    }
+
     pub async fn authorize_guest(
         &self,
         site_id: &str,

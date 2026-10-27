@@ -8,6 +8,7 @@ self:
     services.umbilical = {
       enable = true;
       unifi.mock = true;
+      admin.allowedSubnets = [ "127.0.0.0/8" ];
     };
   };
 
@@ -21,6 +22,14 @@ self:
         "-d '{\"site\":\"default\",\"clientMac\":\"1c:71:25:63:e4:24\"}'"
     )
     assert "expiresAt" in out, out
+    # Admin page: grant a guest the speakers; the grant is saved to the state directory.
+    machine.succeed("curl -sf http://localhost/admin | grep -q '<div id=\"root\">'")
+    machine.succeed("curl -sf http://localhost/api/admin/guests")
+    machine.succeed(
+        "curl -sf -X POST http://localhost/api/admin/speakers/1c:71:25:63:e4:24 "
+        "-H 'content-type: application/json' -d '{\"minutes\":180}'"
+    )
+    machine.succeed("grep -q '1c:71:25:63:e4:24' /var/lib/umbilical/grants.json")
     # Service runs unprivileged.
     machine.succeed("test \"$(systemctl show -p User --value umbilical)\" != root")
   '';

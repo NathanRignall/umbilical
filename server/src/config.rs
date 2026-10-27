@@ -1,6 +1,7 @@
 use std::{env, net::SocketAddr, path::PathBuf};
 
 use anyhow::{Context, Result, bail};
+use ipnet::IpNet;
 
 /// Limits applied to every guest we authorize. `None` = no limit.
 #[derive(Clone, Debug)]
@@ -30,6 +31,14 @@ pub struct Config {
     pub static_dir: PathBuf,
     pub backend: Backend,
     pub limits: GuestLimits,
+    /// Where the admin page's grants are saved.
+    pub state_dir: PathBuf,
+    /// The UniFi site the admin page manages (its `internalReference`, usually `default`).
+    pub site: String,
+    /// Clients allowed to use the admin page. Empty disables it.
+    pub admin_subnets: Vec<IpNet>,
+    /// Name of the firewall policy whose source MAC list the admin page manages.
+    pub speakers_policy: String,
 }
 
 impl Config {
@@ -65,7 +74,23 @@ impl Config {
             tx_kbps: num("GUEST_TX_KBPS")?,
         };
 
-        Ok(Self { listen, static_dir, backend, limits })
+        let admin_subnets = var("ADMIN_ALLOWED_SUBNETS")
+            .unwrap_or_default()
+            .split([',', ' '])
+            .filter(|s| !s.is_empty())
+            .map(|s| s.parse().with_context(|| format!("ADMIN_ALLOWED_SUBNETS: bad subnet {s:?}")))
+            .collect::<Result<_>>()?;
+
+        Ok(Self {
+            listen,
+            static_dir,
+            backend,
+            limits,
+            state_dir: var("STATE_DIR").unwrap_or_else(|| ".".into()).into(),
+            site: var("UNIFI_SITE").unwrap_or_else(|| "default".into()),
+            admin_subnets,
+            speakers_policy: var("SPEAKERS_POLICY_NAME").unwrap_or_else(|| "umbilical: speakers".into()),
+        })
     }
 }
 

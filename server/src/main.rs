@@ -1,4 +1,6 @@
+mod admin;
 mod config;
+mod grants;
 mod unifi;
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc, time::Duration};
@@ -11,6 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use ipnet::IpNet;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tower_http::{
@@ -26,6 +29,12 @@ use unifi::UniFi;
 struct AppState {
     unifi: Option<UniFi>,
     limits: GuestLimits,
+    grants: grants::Grants,
+    site: String,
+    admin_subnets: Vec<IpNet>,
+    speakers_policy: String,
+    /// One firewall-policy update at a time, so overlapping clicks can't finish out of order.
+    sync_lock: tokio::sync::Mutex<()>,
 }
 
 #[tokio::main]
@@ -48,7 +57,21 @@ async fn main() -> anyhow::Result<()> {
             None
         }
     };
-    let state = Arc::new(AppState { unifi, limits: cfg.limits.clone() });
+    let state = Arc::new(AppState {
+        unifi,
+        limits: cfg.limits.clone(),
+        grants: grants::Grants::load(cfg.state_dir.clone()).await,
+        site: cfg.site.clone(),
+        admin_subnets: cfg.admin_subnets.clone(),
+        speakers_policy: cfg.speakers_policy.clone(),
+        sync_lock: Default::default(),
+    });
+    if state.admin_subnets.is_empty() {
+        info!("admin page disabled (ADMIN_ALLOWED_SUBNETS not set)");
+    } else {
+        info!(subnets = ?state.admin_subnets, policy = %state.speakers_policy, "admin page enabled");
+    }
+    tokio::spawn(admin::run_expiry(state.clone()));
 
     // Every unknown path (notably /guest/s/<site>/) gets the SPA. Captive
     // portal browsers cache aggressively, so tell them not to.
@@ -58,9 +81,12 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/api/health", get(|| async { "ok" }))
         .route("/api/authorize", post(authorize))
-        .with_state(state)
+        .route("/api/admin/guests", get(admin::list))
+        .route("/api/admin/speakers/{mac}", post(admin::grant).delete(admin::revoke))
+        .with_state(state.clone())
         .fallback_service(spa)
         .layer(middleware::from_fn(log_page_visit))
+        .layer(middleware::from_fn_with_state(state, admin::guard))
         .layer(SetResponseHeaderLayer::if_not_present(
             header::CACHE_CONTROL,
             header::HeaderValue::from_static("no-store"),

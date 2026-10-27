@@ -69,6 +69,34 @@ in
         default = false;
         description = "Fake every authorization instead of calling UniFi. For testing only.";
       };
+
+      site = mkOption {
+        type = types.str;
+        default = "default";
+        description = "UniFi site (its internal name) the admin page manages.";
+      };
+    };
+
+    admin = {
+      allowedSubnets = mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        example = [ "10.81.0.0/24" ];
+        description = ''
+          Networks allowed to open the admin page (/admin), where you can give a guest temporary
+          access to the speakers. Requests from anywhere else, including the guest Wi-Fi, get a
+          404. Empty disables the admin page.
+        '';
+      };
+
+      speakersPolicy = mkOption {
+        type = types.str;
+        default = "umbilical: speakers";
+        description = ''
+          Name of the UniFi firewall policy (Hotspot zone -> speakers, action Allow, source by
+          MAC address) whose source MAC list the admin page manages. Create it once in UniFi.
+        '';
+      };
     };
 
     environmentFile = mkOption {
@@ -135,6 +163,11 @@ in
         GUEST_DATA_LIMIT_MB = lib.mapNullable toString cfg.guest.dataLimitMB;
         GUEST_RX_KBPS = lib.mapNullable toString cfg.guest.rxKbps;
         GUEST_TX_KBPS = lib.mapNullable toString cfg.guest.txKbps;
+        UNIFI_SITE = cfg.unifi.site;
+        ADMIN_ALLOWED_SUBNETS = lib.concatStringsSep "," cfg.admin.allowedSubnets;
+        SPEAKERS_POLICY_NAME = cfg.admin.speakersPolicy;
+        # Admin page grants survive restarts. On impermanent hosts, persist /var/lib/private/umbilical.
+        STATE_DIR = "/var/lib/umbilical";
       };
 
       serviceConfig = {
@@ -146,6 +179,7 @@ in
         RestartSec = 5;
 
         DynamicUser = true;
+        StateDirectory = "umbilical";
         # Bind :80 without root.
         AmbientCapabilities = [ "CAP_NET_BIND_SERVICE" ];
         CapabilityBoundingSet = [ "CAP_NET_BIND_SERVICE" ];

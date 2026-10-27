@@ -40,6 +40,37 @@ The full API reference is on your console under **Network → Settings → Contr
 5. **Firewall:** on zone-based firewall setups, make sure the **Hotspot** zone may reach the portal
    host on TCP 80.
 
+## Give a guest the speakers (admin page)
+
+`/admin` lists the guests on the hotspot, with buttons to let one of them reach the speakers for
+3 hours, a day, or until revoked. It only answers clients in the networks you allow (everyone
+else, including the guest Wi-Fi, gets a 404).
+
+How it works: the portal keeps a list of granted MACs (saved in its state directory) and writes it
+into the source of one UniFi firewall policy, switching the policy off when nobody is granted.
+Grants expire on their own; the portal checks every 30 seconds.
+
+One-time UniFi setup:
+
+1. Give the speakers fixed IPs.
+2. In the zone-based firewall (its menu location varies by Network version), create a policy
+   named **`umbilical: speakers`**
+   - Source: zone **Hotspot**, by **MAC address** (put any one MAC in; the portal replaces it)
+   - Destination: the speakers' zone, by the speakers' IP addresses
+   - Action: **Allow**. It can start disabled; the portal turns it on when someone is granted.
+3. For AirPlay/Cast discovery, turn on **mDNS** for the hotspot network and the speakers' network.
+   If a speaker shows up but won't play, also allow the speakers' replies back to the Hotspot zone.
+
+Then enable the page (NixOS):
+
+```nix
+services.umbilical.admin.allowedSubnets = [ "10.81.0.0/24" ]; # your home LAN, not the guest one
+```
+
+(Without NixOS: `ADMIN_ALLOWED_SUBNETS=10.81.0.0/24`, `STATE_DIR=/var/lib/umbilical`,
+optionally `SPEAKERS_POLICY_NAME` and `UNIFI_SITE`.) The API key needs permission to edit
+firewall policies, which a key created by a site admin has.
+
 ## Deploy on NixOS (e.g. a Raspberry Pi)
 
 The flake exports a package and a NixOS module. In your system flake:
